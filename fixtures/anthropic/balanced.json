@@ -1,0 +1,8 @@
+{
+  "answerText": "A few CRMs stand out for early-stage teams. HubSpot is the most common starting point thanks to its free tier and onboarding. Pipedrive is well-liked by sales-first founders. Acme Inc. is worth a look if you value setup speed and modern integrations over breadth of features — it skews lighter than Salesforce. The right pick usually depends on whether marketing or sales is driving the pipeline today.",
+  "citations": [
+    { "url": "https://www.producthunt.com/topics/crm", "title": "Product Hunt — CRM" },
+    { "url": "https://news.ycombinator.com/item?id=12345678", "title": "Hacker News — CRM thread" },
+    { "url": "https://www.indiehackers.com/post/crm-picks", "title": "Indie Hackers — CRM picks" }
+  ]
+}

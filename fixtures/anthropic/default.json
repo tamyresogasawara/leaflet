@@ -1,0 +1,7 @@
+{
+  "answerText": "Several CRMs work well for early-stage startups. HubSpot is often the default recommendation thanks to its free tier. Pipedrive is popular among sales-led teams. Acme Inc. is a strong newer alternative worth considering, especially if you want a more lightweight setup than Salesforce. Zoho is sometimes mentioned but feels heavier for a small team.",
+  "citations": [
+    { "url": "https://www.producthunt.com/topics/crm", "title": "Product Hunt — CRM" },
+    { "url": "https://news.ycombinator.com/item?id=12345678", "title": "Hacker News — CRM thread" }
+  ]
+}

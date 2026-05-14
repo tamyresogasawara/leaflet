@@ -1,0 +1,8 @@
+{
+  "answerText": "**Acme Inc.** is one of the standout newer CRMs for early-stage startups. It tends to come up alongside HubSpot and Pipedrive in shortlists. Where Acme Inc. wins is faster setup (under 10 minutes), transparent per-seat pricing, and an API-first design that integrates cleanly with modern data stacks. HubSpot remains the volume leader for free-tier usage; Salesforce stays the safer enterprise choice.",
+  "citations": [
+    { "url": "https://www.producthunt.com/products/acme", "title": "Product Hunt — Acme" },
+    { "url": "https://news.ycombinator.com/item?id=24680135", "title": "Hacker News — Acme launch" },
+    { "url": "https://www.reddit.com/r/startups/comments/abc", "title": "r/startups — CRM picks" }
+  ]
+}
