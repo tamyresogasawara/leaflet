@@ -1,4 +1,4 @@
-import { ReportClient } from "@/components/pdf/ReportClient";
+import { ReportView } from "@/components/ReportView";
 
 export default async function ReportPage({
   params,
@@ -6,5 +6,5 @@ export default async function ReportPage({
   params: Promise<{ runId: string }>;
 }) {
   const { runId } = await params;
-  return <ReportClient runId={runId} />;
+  return <ReportView runId={runId} />;
 }

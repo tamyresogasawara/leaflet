@@ -16,10 +16,6 @@ const securityHeaders = [
 
 const config: NextConfig = {
   reactStrictMode: true,
-  // @react-pdf/renderer ships as ESM-only and pulls in CJS internals that
-  // Next.js can't resolve without transpilation. Bundling it through the
-  // Next.js compiler makes the dynamic import resolve cleanly on the client.
-  transpilePackages: ["@react-pdf/renderer"],
   async headers() {
     return [
       {

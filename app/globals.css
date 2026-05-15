@@ -34,3 +34,36 @@ textarea:focus-visible,
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Print styles for /report/[runId] — used by "Save as PDF". The browser
+ * print dialog handles file output natively; we just hide the app chrome
+ * and tighten the layout. */
+@media print {
+  @page {
+    margin: 0.6in 0.5in;
+  }
+  /* Hide everything that isn't part of the report itself. */
+  body > header,
+  body > div[class*="border-b border-border bg-[#EEF2FF]"],
+  .report-actions {
+    display: none !important;
+  }
+  body > main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  body {
+    background: #ffffff !important;
+  }
+  /* Print-friendly link rendering: no underline overload, no color cost. */
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+  /* Keep each engine card and metric tile from being torn across pages. */
+  .report-cover,
+  .report section > section,
+  .report section > div > div {
+    break-inside: avoid;
+  }
+}
