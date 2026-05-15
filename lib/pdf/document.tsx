@@ -2,7 +2,6 @@
 import * as React from "react";
 import {
   Document,
-  Font,
   Link,
   Page,
   Path,
@@ -13,43 +12,18 @@ import {
 } from "@react-pdf/renderer";
 import { format } from "date-fns";
 import { brand } from "@/brand.config";
-import { computeCompetitorTotals, findMentionSpans } from "@/lib/detect";
+import { findMentionSpans } from "@/lib/detect";
 import { t } from "@/lib/strings";
 import type { Analysis } from "@/lib/stores/runsStore";
 
 // --- Fonts -----------------------------------------------------------------
 //
-// We try to register Inter from Google Fonts' CDN (Font.register is the
-// only sanctioned path in @react-pdf — it fetches at render time). If the
-// fetch fails (offline, locked-down network, CDN hiccup), @react-pdf falls
-// back to Helvetica silently. We deliberately do NOT block render on font
-// availability — the PDF still produces; it just won't be in Inter.
-//
-// Trade-off: registering local .ttf files would be more reliable but
-// requires shipping the fonts in /public/ and an additional MIME-type
-// dance for the CDN fetch in dev. v0 ships with the CDN attempt; if it
-// turns out to be unreliable we can mirror the .ttf locally.
-try {
-  Font.register({
-    family: "Inter",
-    fonts: [
-      {
-        src: "https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIa1ZL7.woff2",
-        fontWeight: 400,
-      },
-      {
-        src: "https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIa3ZL7.woff2",
-        fontWeight: 600,
-      },
-      {
-        src: "https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIa3ZL7.woff2",
-        fontWeight: 700,
-      },
-    ],
-  });
-} catch {
-  // Re-registration on hot reload throws — safe to ignore.
-}
+// v0 uses @react-pdf's built-in Helvetica. Earlier we tried `Font.register`
+// against Google Fonts' CDN for Inter, but the runtime-fetch path was brittle
+// (one wrong woff2 URL surfaced as a deep `Cannot read properties of
+// undefined (reading 'split')` inside the renderer). Helvetica keeps the PDF
+// self-contained and ships without a network dependency. If we want Inter
+// later, we'll ship .ttf files from /public/ and register from there.
 
 // --- Palette ---------------------------------------------------------------
 
@@ -62,8 +36,6 @@ const COLORS = {
   error: "#B91C1C",
 } as const;
 
-const FONT_FAMILY = "Inter";
-
 // --- Styles ---------------------------------------------------------------
 
 const styles = StyleSheet.create({
@@ -75,7 +47,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 56,
     fontSize: 10,
     lineHeight: 1.5,
-    fontFamily: FONT_FAMILY,
   },
   cover: {
     backgroundColor: "#FFFFFF",
@@ -83,7 +54,6 @@ const styles = StyleSheet.create({
     padding: 56,
     alignItems: "center",
     justifyContent: "center",
-    fontFamily: FONT_FAMILY,
   },
   coverInner: {
     alignItems: "center",
@@ -231,7 +201,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     borderTopStyle: "solid",
-    fontFamily: FONT_FAMILY,
   },
 });
 
@@ -272,13 +241,14 @@ export function ReportDocument({ analysis }: { analysis: Analysis }) {
     (acc, r) => acc + (r.citations?.length ?? 0),
     0
   );
-  const competitorTotals = computeCompetitorTotals(done);
-  const competitorTileValue =
-    competitorTotals.totalMentions === 0
-      ? "0"
-      : competitorTotals.leader
-        ? `${competitorTotals.totalMentions} (top: ${competitorTotals.leader.name} · ${competitorTotals.leader.count})`
-        : String(competitorTotals.totalMentions);
+  const totalTracked = analysis.input.competitors.length;
+  const showCompetitorTile = totalTracked > 0;
+  // Brief semantics: how many tracked competitors appeared in ≥1 engine.
+  const competitorsMentioned = showCompetitorTile
+    ? analysis.input.competitors.filter((name) =>
+        done.some((r) => (r.mentions?.competitors?.[name]?.count ?? 0) > 0)
+      ).length
+    : 0;
   const createdAt = format(new Date(analysis.createdAt), "PPpp");
   const promptForCover = truncate(analysis.input.prompt, 200);
 
@@ -325,13 +295,18 @@ export function ReportDocument({ analysis }: { analysis: Analysis }) {
               Where your brand first appears in the answer text.
             </Text>
           </View>
-          <View style={styles.tile}>
-            <Text style={styles.tileLabel}>Competitor mentions</Text>
-            <Text style={styles.tileValue}>{competitorTileValue}</Text>
-            <Text style={styles.tileHelp}>
-              Total mentions across competitors and which one leads.
-            </Text>
-          </View>
+          {showCompetitorTile ? (
+            <View style={styles.tile}>
+              <Text style={styles.tileLabel}>Competitors mentioned</Text>
+              <Text style={styles.tileValue}>
+                {competitorsMentioned} of {totalTracked} across engines
+              </Text>
+              <Text style={styles.tileHelp}>
+                How many of your tracked competitors appeared in at least one
+                engine&apos;s answer.
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.tile}>
             <Text style={styles.tileLabel}>Citations found</Text>
             <Text style={styles.tileValue}>{totalCitations}</Text>
@@ -413,20 +388,23 @@ function CompetitorTalliesPdf({
   const hits = result.mentions?.competitors ?? {};
   return (
     <View style={styles.competitorBlock}>
-      <Text style={styles.competitorTitle}>Competitor mentions</Text>
+      <Text style={styles.competitorTitle}>Competitors in this answer</Text>
       <View style={styles.competitorRow}>
         {competitors.map((name) => {
           const count = hits[name]?.count ?? 0;
+          const mentioned = count > 0;
           return (
             <Text
               key={name}
               style={
-                count > 0
+                mentioned
                   ? styles.competitorTallyHit
                   : styles.competitorTallyMiss
               }
             >
-              {name} · {count}
+              {mentioned
+                ? `● ${name} ×${count}`
+                : `○ ${name} (not mentioned)`}
             </Text>
           );
         })}
