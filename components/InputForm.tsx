@@ -14,8 +14,8 @@ const COMPETITOR_PLACEHOLDERS = ["HubSpot", "Pipedrive", "Salesforce"];
 
 const PROMPT_PLACEHOLDERS = [
   "What are the best CRMs for early-stage startups?",
-  "Which CRM has the most generous free tier?",
-  "Compare HubSpot and Pipedrive for a 10-person sales team.",
+  "Which CRM has the best free tier?",
+  "Compare HubSpot vs Pipedrive for a Series A SaaS.",
 ];
 
 export function InputForm() {
@@ -30,7 +30,10 @@ export function InputForm() {
     const initial = defaults.competitors ?? [];
     return initial.length > 0 ? initial : [""];
   });
-  const [prompts, setPrompts] = useState<string[]>([""]);
+  const [prompts, setPrompts] = useState<string[]>(() => {
+    const initial = defaults.prompts ?? [];
+    return initial.length > 0 ? initial : [""];
+  });
   const [openaiOn, setOpenaiOn] = useState(true);
   const [anthropicOn, setAnthropicOn] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -68,7 +71,11 @@ export function InputForm() {
     const cleanedCompetitors = competitors
       .map((s) => s.trim())
       .filter(Boolean);
-    setDefaults({ brand: brand.trim(), competitors: cleanedCompetitors });
+    setDefaults({
+      brand: brand.trim(),
+      competitors: cleanedCompetitors,
+      prompts: cleanedPrompts,
+    });
     setSubmitting(true);
     try {
       const res = await fetch("/api/analyze", {

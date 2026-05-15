@@ -123,40 +123,26 @@ export function ReportView({ runId }: { runId: string }) {
           }
         >
           <Tile
-            label="Mention rate"
-            value={
-              multiPrompt
-                ? `${mentioned} of ${done.length} answers`
-                : `${mentioned} of ${done.length} engines`
-            }
-            help={
-              multiPrompt
-                ? "How many of the engine answers across all prompts mentioned your brand at least once."
-                : "How many engines mentioned your brand at least once."
-            }
-          />
-          <Tile
-            label={multiPrompt ? "Prompts run" : "First position"}
-            value={
-              multiPrompt ? `${prompts.length}` : firstPositionSummary(done)
-            }
-            help={
-              multiPrompt
-                ? "Total prompts tested in this analysis."
-                : "Where your brand first appears in the answer text."
-            }
+            label="Brand mention rate"
+            value={`${mentioned} of ${analysis.results.length}`}
+            help="How many (prompt × engine) answers mentioned your brand at least once."
           />
           {totalTracked > 0 ? (
             <Tile
               label="Competitors mentioned"
-              value={`${competitorsMentioned} of ${totalTracked} across answers`}
-              help="How many of your tracked competitors appeared in at least one answer."
+              value={`${competitorsMentioned} of ${totalTracked}`}
+              help="How many tracked competitors appeared in at least one answer."
             />
           ) : null}
           <Tile
             label="Citations found"
             value={String(totalCitations)}
             help="Distinct sources the engines linked to."
+          />
+          <Tile
+            label="Calls"
+            value={`${prompts.length} prompts × ${new Set(analysis.results.map((r) => r.engine)).size} engines = ${analysis.results.length}`}
+            help="Total fan-out for this run."
           />
         </div>
       </section>
@@ -170,11 +156,14 @@ export function ReportView({ runId }: { runId: string }) {
           const promptResults = analysis.results.filter(
             (r) => r.promptIndex === pIdx
           );
+          // Force a page break before each prompt section except the first,
+          // so each prompt and its answers gets its own printed page.
+          const breakClass = pIdx > 0 ? "print:break-before-page" : "";
           return (
             <section
               key={pIdx}
               aria-label={`Prompt ${pIdx + 1}`}
-              className="space-y-3 print:break-inside-avoid-page"
+              className={`space-y-3 ${breakClass}`}
             >
               <header>
                 <p className="text-xs uppercase tracking-wide text-subtle">
@@ -206,17 +195,6 @@ export function ReportView({ runId }: { runId: string }) {
   );
 }
 
-function firstPositionSummary(results: EngineResult[]): string {
-  if (results.length === 0) return "—";
-  return results
-    .map((r) => {
-      const label = ENGINE_LABELS[r.engine] ?? r.engine;
-      const fi = r.mentions?.brand.firstIndex;
-      if (fi == null) return `not in ${label}`;
-      return `${label}: chr ${fi}`;
-    })
-    .join(" · ");
-}
 
 function Tile({
   label,

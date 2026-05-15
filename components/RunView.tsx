@@ -176,14 +176,32 @@ export function RunView({ runId }: { runId: string }) {
       ) : null}
 
       {!terminal ? (
-        <p
-          className="text-sm text-muted"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          Asking the engines. {state.progress.done}/{state.progress.total}{" "}
-          finished. Usually 10–20 seconds per engine.
-        </p>
+        <div className="space-y-3" aria-live="polite" aria-atomic="true">
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted">
+              Asking the engines. {state.progress.done}/
+              {state.progress.total} combinations finished.
+            </p>
+            <div className="h-1.5 flex-1 max-w-xs overflow-hidden rounded-full bg-surface">
+              <div
+                className="h-full bg-[var(--color-primary)] transition-all"
+                style={{
+                  width: `${
+                    state.progress.total === 0
+                      ? 0
+                      : Math.round(
+                          (state.progress.done / state.progress.total) * 100
+                        )
+                  }%`,
+                }}
+              />
+            </div>
+          </div>
+          <LoadingGrid
+            prompts={inputCache.current?.prompts ?? []}
+            results={state.results}
+          />
+        </div>
       ) : null}
 
       {terminal ? (
@@ -192,16 +210,73 @@ export function RunView({ runId }: { runId: string }) {
           brand={inputCache.current?.brand ?? ""}
           competitors={inputCache.current?.competitors ?? []}
           prompts={inputCache.current?.prompts ?? []}
+          engines={new Set(state.results.map((r) => r.engine)).size || 1}
         />
       ) : null}
 
-      <PromptSections
-        prompts={inputCache.current?.prompts ?? []}
-        results={state.results}
-        brand={inputCache.current?.brand ?? ""}
-        competitors={inputCache.current?.competitors ?? []}
-      />
+      {terminal ? (
+        <PromptSections
+          prompts={inputCache.current?.prompts ?? []}
+          results={state.results}
+          brand={inputCache.current?.brand ?? ""}
+          competitors={inputCache.current?.competitors ?? []}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function LoadingGrid({
+  prompts,
+  results,
+}: {
+  prompts: string[];
+  results: EngineResult[];
+}) {
+  if (prompts.length === 0) return null;
+  const engineSet = Array.from(new Set(results.map((r) => r.engine)));
+  return (
+    <ul className="space-y-1 text-xs">
+      {prompts.map((promptText, idx) => {
+        const promptResults = results.filter((r) => r.promptIndex === idx);
+        return (
+          <li
+            key={idx}
+            className="flex items-center gap-3 rounded border border-border bg-white px-3 py-2"
+          >
+            <span className="w-20 shrink-0 text-subtle">
+              Prompt {idx + 1}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-ink">
+              {promptText.slice(0, 80)}
+              {promptText.length > 80 ? "…" : ""}
+            </span>
+            <span className="flex gap-1.5">
+              {engineSet.map((eng) => {
+                const r = promptResults.find((x) => x.engine === eng);
+                const status = r?.status ?? "running";
+                const label = ENGINE_LABELS[eng] ?? eng;
+                const cls =
+                  status === "done"
+                    ? "bg-[#DCFCE7] text-success"
+                    : status === "error"
+                      ? "bg-[#FEE2E2] text-error"
+                      : "bg-surface text-muted";
+                return (
+                  <span
+                    key={eng}
+                    className={`rounded-full px-2 py-0.5 ${cls}`}
+                    aria-label={`${label}: ${status}`}
+                  >
+                    {label}
+                  </span>
+                );
+              })}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -216,42 +291,114 @@ function PromptSections({
   brand: string;
   competitors: string[];
 }) {
-  if (prompts.length === 0) {
-    // No input cached yet (loading). Render nothing — the parent renders
-    // a "Loading…" or in-flight progress line.
-    return null;
-  }
+  // Track open/closed by prompt index. Default: only the first prompt open.
+  // We seed via an init callback so the keys are stable across renders.
+  const [openIdx, setOpenIdx] = useState<Set<number>>(
+    () => new Set([0])
+  );
+  if (prompts.length === 0) return null;
+  const allOpen = openIdx.size === prompts.length;
+  const expandAll = () =>
+    setOpenIdx(new Set(prompts.map((_, i) => i)));
+  const collapseAll = () => setOpenIdx(new Set());
   return (
-    <div className="space-y-8">
-      {prompts.map((promptText, idx) => {
-        const promptResults = results.filter((r) => r.promptIndex === idx);
-        return (
-          <section
-            key={idx}
-            aria-label={`Prompt ${idx + 1}`}
-            className="space-y-3"
+    <div className="space-y-4">
+      {prompts.length > 1 ? (
+        <div className="flex items-center justify-end gap-2 text-xs">
+          <button
+            type="button"
+            onClick={allOpen ? collapseAll : expandAll}
+            className="text-muted hover:text-ink hover:underline"
           >
-            <header className="flex items-baseline gap-2">
-              <span className="text-xs uppercase tracking-wide text-subtle">
-                Prompt {idx + 1} of {prompts.length}
-              </span>
-            </header>
-            <p className="rounded-card border border-border bg-surface p-3 font-mono text-sm leading-6 text-ink">
-              {promptText}
-            </p>
-            <div className="grid gap-4 md:grid-cols-2">
-              {promptResults.map((r) => (
-                <EngineCard
-                  key={`${r.engine}-${r.promptIndex}`}
-                  result={r}
-                  brand={brand}
-                  competitors={competitors}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+            {allOpen ? "Collapse all" : "Expand all"}
+          </button>
+        </div>
+      ) : null}
+      <div className="space-y-4">
+        {prompts.map((promptText, idx) => {
+          const promptResults = results.filter((r) => r.promptIndex === idx);
+          const doneForPrompt = promptResults.filter(
+            (r) => r.status === "done"
+          );
+          const mentionedForPrompt = doneForPrompt.filter(
+            (r) => r.mentions?.brand.mentioned
+          ).length;
+          const isOpen = openIdx.has(idx);
+          const miniSummary =
+            doneForPrompt.length === 0
+              ? "Pending"
+              : mentionedForPrompt === 0
+                ? "Not mentioned"
+                : `Mentioned in ${mentionedForPrompt} of ${doneForPrompt.length} engine${doneForPrompt.length === 1 ? "" : "s"}`;
+          return (
+            <section
+              key={idx}
+              aria-label={`Prompt ${idx + 1}`}
+              className="rounded-card border border-border bg-white"
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setOpenIdx((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(idx)) next.delete(idx);
+                    else next.add(idx);
+                    return next;
+                  })
+                }
+                aria-expanded={isOpen}
+                className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-surface"
+              >
+                <span
+                  aria-hidden
+                  className={`mt-1 inline-block h-3 w-3 text-subtle transition-transform ${
+                    isOpen ? "rotate-90" : ""
+                  }`}
+                >
+                  ▸
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs uppercase tracking-wide text-subtle">
+                    Prompt {idx + 1} of {prompts.length}
+                  </p>
+                  <p className="mt-1 line-clamp-2 text-sm text-ink">
+                    {promptText.slice(0, 80)}
+                    {promptText.length > 80 ? "…" : ""}
+                  </p>
+                </div>
+                <span
+                  className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
+                    mentionedForPrompt > 0
+                      ? "bg-[#DCFCE7] text-success"
+                      : doneForPrompt.length === 0
+                        ? "bg-surface text-muted"
+                        : "bg-surface text-muted"
+                  }`}
+                >
+                  {miniSummary}
+                </span>
+              </button>
+              {isOpen ? (
+                <div className="space-y-3 border-t border-border px-4 py-4">
+                  <p className="rounded-card border border-border bg-surface p-3 font-mono text-sm leading-6 text-ink">
+                    {promptText}
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {promptResults.map((r) => (
+                      <EngineCard
+                        key={`${r.engine}-${r.promptIndex}`}
+                        result={r}
+                        brand={brand}
+                        competitors={competitors}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -261,14 +408,15 @@ function SummaryStrip({
   brand,
   competitors,
   prompts,
+  engines,
 }: {
   results: EngineResult[];
   brand: string;
   competitors: string[];
   prompts: string[];
+  engines: number;
 }) {
   const done = results.filter((r) => r.status === "done");
-  const totalAnswers = done.length;
   const mentioned = done.filter((r) => r.mentions?.brand.mentioned).length;
   const totalCitations = done.reduce(
     (acc, r) => acc + (r.citations?.length ?? 0),
@@ -282,43 +430,22 @@ function SummaryStrip({
         done.some((r) => (r.mentions?.competitors?.[name]?.count ?? 0) > 0)
       ).length
     : 0;
-  const multiPrompt = prompts.length > 1;
+  const totalCalls = prompts.length * engines;
   const gridCols = showCompetitorTile
     ? "md:grid-cols-2 lg:grid-cols-4"
     : "md:grid-cols-3";
   return (
     <div className={`grid gap-3 ${gridCols}`}>
       <Tile
-        label="Mention rate"
-        value={
-          multiPrompt
-            ? `${mentioned} of ${totalAnswers} answers`
-            : `${mentioned} of ${totalAnswers} engines`
-        }
-        help={
-          multiPrompt
-            ? `How many of the engine answers across all prompts mentioned ${brand || "your brand"} at least once.`
-            : `How many engines mentioned ${brand || "your brand"} at least once.`
-        }
-      />
-      <Tile
-        label={multiPrompt ? "Prompts run" : "First position"}
-        value={
-          multiPrompt
-            ? `${prompts.length}`
-            : firstPositionSummary(done, brand)
-        }
-        help={
-          multiPrompt
-            ? "Total prompts tested in this analysis."
-            : "Where your brand first appears in each answer."
-        }
+        label="Brand mention rate"
+        value={`${mentioned} of ${totalCalls}`}
+        help={`How many (prompt × engine) answers mentioned ${brand || "your brand"} at least once.`}
       />
       {showCompetitorTile ? (
         <Tile
           label="Competitors mentioned"
-          value={`${competitorsMentioned} of ${totalTracked} across answers`}
-          help="How many of your tracked competitors appeared in at least one answer."
+          value={`${competitorsMentioned} of ${totalTracked}`}
+          help="How many tracked competitors appeared in at least one answer."
         />
       ) : null}
       <Tile
@@ -326,22 +453,15 @@ function SummaryStrip({
         value={String(totalCitations)}
         help="Distinct sources the engines linked to."
       />
+      <Tile
+        label="Calls"
+        value={`${prompts.length} prompts × ${engines} engines = ${totalCalls}`}
+        help="Total fan-out for this run."
+      />
     </div>
   );
 }
 
-
-function firstPositionSummary(results: EngineResult[], brand: string): string {
-  if (results.length === 0) return "—";
-  return results
-    .map((r) => {
-      const label = ENGINE_LABELS[r.engine] ?? r.engine;
-      const fi = r.mentions?.brand.firstIndex;
-      if (fi == null) return `not in ${label}`;
-      return `${label}: chr ${fi}`;
-    })
-    .join(" · ");
-}
 
 function Tile({
   label,

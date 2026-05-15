@@ -50,6 +50,7 @@ function mkResult(
   return {
     engine,
     promptIndex,
+    prompt: `prompt-${promptIndex}`,
     status: "done",
     mentions: {
       brand: { mentioned: false, count: 0, firstIndex: null },
@@ -99,6 +100,7 @@ describe("computeCompetitorTotals", () => {
     const without: EngineResult = {
       engine: "openai",
       promptIndex: 0,
+      prompt: "p",
       status: "done",
     };
     const r = computeCompetitorTotals([

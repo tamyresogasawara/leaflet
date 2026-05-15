@@ -66,17 +66,16 @@ export function HistoryView() {
                       : "border-border bg-white hover:bg-surface"
                   }`}
                 >
-                  <p className="line-clamp-1 font-medium text-ink">
+                  <p className="text-xs font-medium uppercase tracking-wide text-subtle">
+                    {a.input.prompts.length === 1
+                      ? "1 prompt"
+                      : `${a.input.prompts.length} prompts`}
+                  </p>
+                  <p className="mt-1 line-clamp-2 text-sm text-ink">
                     {a.input.prompts[0] ?? "(no prompt)"}
                   </p>
                   <p className="mt-1 text-xs text-subtle">
-                    {a.input.brand}
-                    {a.input.prompts.length > 1
-                      ? ` · +${a.input.prompts.length - 1} more prompt${
-                          a.input.prompts.length - 1 === 1 ? "" : "s"
-                        }`
-                      : ""}
-                    {" · "}
+                    {a.input.brand} ·{" "}
                     {formatDistanceToNow(new Date(a.createdAt), {
                       addSuffix: true,
                     })}

@@ -13,6 +13,7 @@ type State = {
   defaults: {
     brand?: string;
     competitors?: string[];
+    prompts?: string[];
   };
 };
 
