@@ -66,6 +66,8 @@ export function ReportView({ runId }: { runId: string }) {
       ).length
     : 0;
   const createdAt = format(new Date(analysis.createdAt), "PPpp");
+  const prompts = analysis.input.prompts;
+  const multiPrompt = prompts.length > 1;
 
   return (
     <article className="report mx-auto max-w-3xl space-y-8">
@@ -97,10 +99,15 @@ export function ReportView({ runId }: { runId: string }) {
           AI visibility report
         </h1>
         <p className="text-lg text-muted">{analysis.input.brand}</p>
-        <p className="text-xs text-subtle">Generated {createdAt}</p>
-        <p className="text-sm italic text-muted">
-          &ldquo;{analysis.input.prompt}&rdquo;
+        <p className="text-xs text-subtle">
+          Generated {createdAt} ·{" "}
+          {prompts.length === 1 ? "1 prompt" : `${prompts.length} prompts`}
         </p>
+        {!multiPrompt ? (
+          <p className="text-sm italic text-muted">
+            &ldquo;{prompts[0]}&rdquo;
+          </p>
+        ) : null}
       </header>
 
       {/* Summary */}
@@ -117,19 +124,33 @@ export function ReportView({ runId }: { runId: string }) {
         >
           <Tile
             label="Mention rate"
-            value={`${mentioned} of ${done.length} engines`}
-            help="How many engines mentioned your brand at least once."
+            value={
+              multiPrompt
+                ? `${mentioned} of ${done.length} answers`
+                : `${mentioned} of ${done.length} engines`
+            }
+            help={
+              multiPrompt
+                ? "How many of the engine answers across all prompts mentioned your brand at least once."
+                : "How many engines mentioned your brand at least once."
+            }
           />
           <Tile
-            label="First position"
-            value={firstPositionSummary(done)}
-            help="Where your brand first appears in the answer text."
+            label={multiPrompt ? "Prompts run" : "First position"}
+            value={
+              multiPrompt ? `${prompts.length}` : firstPositionSummary(done)
+            }
+            help={
+              multiPrompt
+                ? "Total prompts tested in this analysis."
+                : "Where your brand first appears in the answer text."
+            }
           />
           {totalTracked > 0 ? (
             <Tile
               label="Competitors mentioned"
-              value={`${competitorsMentioned} of ${totalTracked} across engines`}
-              help="How many of your tracked competitors appeared in at least one engine's answer."
+              value={`${competitorsMentioned} of ${totalTracked} across answers`}
+              help="How many of your tracked competitors appeared in at least one answer."
             />
           ) : null}
           <Tile
@@ -140,19 +161,42 @@ export function ReportView({ runId }: { runId: string }) {
         </div>
       </section>
 
-      {/* Per-engine answers */}
-      <section className="space-y-6">
+      {/* Per-prompt answers */}
+      <section className="space-y-8">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-subtle">
           Answers
         </h2>
-        {analysis.results.map((r) => (
-          <EngineSection
-            key={r.engine}
-            result={r}
-            brand={analysis.input.brand}
-            competitors={analysis.input.competitors}
-          />
-        ))}
+        {prompts.map((promptText, pIdx) => {
+          const promptResults = analysis.results.filter(
+            (r) => r.promptIndex === pIdx
+          );
+          return (
+            <section
+              key={pIdx}
+              aria-label={`Prompt ${pIdx + 1}`}
+              className="space-y-3 print:break-inside-avoid-page"
+            >
+              <header>
+                <p className="text-xs uppercase tracking-wide text-subtle">
+                  Prompt {pIdx + 1} of {prompts.length}
+                </p>
+                <p className="mt-1 rounded-card border border-border bg-surface p-3 font-mono text-sm leading-6 text-ink">
+                  {promptText}
+                </p>
+              </header>
+              <div className="space-y-4">
+                {promptResults.map((r) => (
+                  <EngineSection
+                    key={`${r.engine}-${r.promptIndex}`}
+                    result={r}
+                    brand={analysis.input.brand}
+                    competitors={analysis.input.competitors}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </section>
 
       <footer className="report-footer border-t border-border pt-4 text-xs text-subtle">

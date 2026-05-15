@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { runMap, type RunState } from "@/lib/runMap";
+import { runMap, totalCalls, type RunState } from "@/lib/runMap";
 import { getEngineClient, getEngineMode } from "@/lib/engines/client";
 import { detectMentions } from "@/lib/detect";
 import { EngineError } from "@/lib/engines/errors";
@@ -22,7 +22,7 @@ const ApiKey = z
 const AnalyzeRequest = z.object({
   brand: z.string().min(1).max(200),
   competitors: z.array(z.string().max(200)).max(10).default([]),
-  prompt: z.string().min(1).max(4000),
+  prompts: z.array(z.string().min(1).max(4000)).min(1).max(10),
   engines: z.array(z.enum(["openai", "anthropic"])).min(1),
   keys: z
     .object({
@@ -32,17 +32,20 @@ const AnalyzeRequest = z.object({
     .optional(),
 });
 
-async function runEngine(
+async function runOne(
   runId: string,
   engine: EngineName,
+  promptIndex: number,
   apiKey: string | undefined
 ): Promise<void> {
   const state = runMap.get(runId);
   if (!state) return;
+  const promptText = state.input.prompts[promptIndex];
+  if (promptText === undefined) return;
   try {
     const client = getEngineClient(engine, apiKey);
     const { answerText, citations } = await client.run({
-      prompt: state.input.prompt,
+      prompt: promptText,
       brand: state.input.brand,
       competitors: state.input.competitors,
     });
@@ -51,8 +54,10 @@ async function runEngine(
       state.input.brand,
       state.input.competitors
     );
-    updateEngineResult(runId, engine, {
+    upsertResult(runId, {
       engine,
+      promptIndex,
+      prompt: promptText,
       status: "done",
       answerText,
       citations,
@@ -67,8 +72,10 @@ async function runEngine(
             "unknown",
             redactString(err instanceof Error ? err.message : String(err))
           );
-    updateEngineResult(runId, engine, {
+    upsertResult(runId, {
       engine,
+      promptIndex,
+      prompt: promptText,
       status: "error",
       ranAt: new Date().toISOString(),
       error: { code: ee.code, message: ee.publicMessage },
@@ -76,19 +83,19 @@ async function runEngine(
   }
 }
 
-function updateEngineResult(
-  runId: string,
-  engine: EngineName,
-  next: EngineResult
-): void {
+function upsertResult(runId: string, next: EngineResult): void {
   const state = runMap.get(runId);
   if (!state) return;
-  const others = state.results.filter((r) => r.engine !== engine);
-  state.results = [...others, next];
-  const allTerminal = state.results.every(
-    (r) => r.status === "done" || r.status === "error"
+  // Index by (engine, promptIndex) — both must match to replace.
+  const others = state.results.filter(
+    (r) => !(r.engine === next.engine && r.promptIndex === next.promptIndex)
   );
-  if (allTerminal && state.results.length === state.engines.length) {
+  state.results = [...others, next];
+  const expected = totalCalls(state);
+  const terminalCount = state.results.filter(
+    (r) => r.status === "done" || r.status === "error"
+  ).length;
+  if (terminalCount === expected) {
     const anyOk = state.results.some((r) => r.status === "done");
     state.status = anyOk ? "done" : "error";
   } else {
@@ -122,10 +129,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 400 }
     );
   }
-  const { brand, competitors, prompt, engines, keys } = parsed.data;
+  const { brand, competitors, prompts, engines, keys } = parsed.data;
 
-  // Resolve keys per universal precedence in live mode only. Fixture mode
-  // ignores keys entirely — the fixture client never calls a provider.
   let resolved: Partial<Record<EngineName, string>> = {};
   if (getEngineMode() === "live") {
     try {
@@ -146,18 +151,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const runId = randomUUID();
+  const initialResults: EngineResult[] = [];
+  for (let p = 0; p < prompts.length; p++) {
+    for (const engine of engines) {
+      initialResults.push({
+        engine,
+        promptIndex: p,
+        prompt: prompts[p]!,
+        status: "running",
+      });
+    }
+  }
   const state: RunState = {
     runId,
     status: "pending",
     createdAt: new Date().toISOString(),
-    input: { brand, competitors, prompt },
+    input: { brand, competitors, prompts },
     engines,
-    results: engines.map((engine) => ({ engine, status: "running" })),
+    results: initialResults,
   };
   runMap.set(runId, state);
 
-  for (const engine of engines) {
-    void runEngine(runId, engine, resolved[engine]);
+  // Fan out per (prompt × engine). Each call is fire-and-forget; the client
+  // polls GET /api/analyze/:runId to assemble partial results.
+  for (let p = 0; p < prompts.length; p++) {
+    for (const engine of engines) {
+      void runOne(runId, engine, p, resolved[engine]);
+    }
   }
 
   return NextResponse.json({ runId }, { status: 202 });

@@ -44,10 +44,12 @@ describe("detectMentions", () => {
 
 function mkResult(
   engine: "openai" | "anthropic",
-  competitors: Record<string, number>
+  competitors: Record<string, number>,
+  promptIndex = 0
 ): EngineResult {
   return {
     engine,
+    promptIndex,
     status: "done",
     mentions: {
       brand: { mentioned: false, count: 0, firstIndex: null },
@@ -94,11 +96,26 @@ describe("computeCompetitorTotals", () => {
   });
 
   it("skips results without mentions", () => {
-    const without: EngineResult = { engine: "openai", status: "done" };
+    const without: EngineResult = {
+      engine: "openai",
+      promptIndex: 0,
+      status: "done",
+    };
     const r = computeCompetitorTotals([
       without,
       mkResult("anthropic", { HubSpot: 2 }),
     ]);
     expect(r.totalMentions).toBe(2);
+  });
+
+  it("sums across multiple prompts (different promptIndex)", () => {
+    const r = computeCompetitorTotals([
+      mkResult("openai", { HubSpot: 2 }, 0),
+      mkResult("openai", { HubSpot: 1, Pipedrive: 2 }, 1),
+      mkResult("anthropic", { HubSpot: 0, Pipedrive: 0 }, 0),
+    ]);
+    expect(r.totalMentions).toBe(5);
+    expect(r.perCompetitor.find((p) => p.name === "HubSpot")?.count).toBe(3);
+    expect(r.perCompetitor.find((p) => p.name === "Pipedrive")?.count).toBe(2);
   });
 });

@@ -67,10 +67,16 @@ export function HistoryView() {
                   }`}
                 >
                   <p className="line-clamp-1 font-medium text-ink">
-                    {a.input.prompt}
+                    {a.input.prompts[0] ?? "(no prompt)"}
                   </p>
                   <p className="mt-1 text-xs text-subtle">
-                    {a.input.brand} ·{" "}
+                    {a.input.brand}
+                    {a.input.prompts.length > 1
+                      ? ` · +${a.input.prompts.length - 1} more prompt${
+                          a.input.prompts.length - 1 === 1 ? "" : "s"
+                        }`
+                      : ""}
+                    {" · "}
                     {formatDistanceToNow(new Date(a.createdAt), {
                       addSuffix: true,
                     })}
@@ -83,7 +89,7 @@ export function HistoryView() {
       </aside>
 
       {selected ? (
-        <section className="space-y-4">
+        <section className="space-y-6">
           <header className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-subtle">
@@ -92,7 +98,16 @@ export function HistoryView() {
               <h1 className="mt-1 text-xl font-semibold text-ink">
                 {selected.input.brand}
               </h1>
-              <p className="mt-1 text-sm text-muted">{selected.input.prompt}</p>
+              <p className="mt-1 text-sm text-muted">
+                {selected.input.prompts.length === 1
+                  ? "1 prompt"
+                  : `${selected.input.prompts.length} prompts`}{" "}
+                ·{" "}
+                {new Set(selected.results.map((r) => r.engine)).size} engine
+                {new Set(selected.results.map((r) => r.engine)).size === 1
+                  ? ""
+                  : "s"}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <Link
@@ -114,36 +129,57 @@ export function HistoryView() {
             </div>
           </header>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {selected.results.map((r) => (
-              <Card key={r.engine}>
-                <CardHeader>
-                  <span className="text-sm font-semibold text-ink">
-                    {ENGINE_LABELS[r.engine] ?? r.engine}
-                  </span>
-                  {r.ranAt ? (
-                    <span className="text-xs text-subtle">
-                      {new Date(r.ranAt).toLocaleString()}
-                    </span>
-                  ) : null}
-                </CardHeader>
-                <CardBody>
-                  {r.answerText ? (
-                    <SafeMarkdown
-                      source={r.answerText}
-                      brand={selected.input.brand}
-                      competitors={selected.input.competitors}
-                    />
-                  ) : (
-                    <p className="text-sm text-muted">No answer.</p>
-                  )}
-                  <CompetitorTallies
-                    result={r}
-                    competitors={selected.input.competitors}
-                  />
-                </CardBody>
-              </Card>
-            ))}
+          <div className="space-y-8">
+            {selected.input.prompts.map((promptText, pIdx) => {
+              const promptResults = selected.results.filter(
+                (r) => r.promptIndex === pIdx
+              );
+              return (
+                <section
+                  key={pIdx}
+                  aria-label={`Prompt ${pIdx + 1}`}
+                  className="space-y-3"
+                >
+                  <p className="text-xs uppercase tracking-wide text-subtle">
+                    Prompt {pIdx + 1} of {selected.input.prompts.length}
+                  </p>
+                  <p className="rounded-card border border-border bg-surface p-3 font-mono text-sm leading-6 text-ink">
+                    {promptText}
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {promptResults.map((r) => (
+                      <Card key={`${r.engine}-${r.promptIndex}`}>
+                        <CardHeader>
+                          <span className="text-sm font-semibold text-ink">
+                            {ENGINE_LABELS[r.engine] ?? r.engine}
+                          </span>
+                          {r.ranAt ? (
+                            <span className="text-xs text-subtle">
+                              {new Date(r.ranAt).toLocaleString()}
+                            </span>
+                          ) : null}
+                        </CardHeader>
+                        <CardBody>
+                          {r.answerText ? (
+                            <SafeMarkdown
+                              source={r.answerText}
+                              brand={selected.input.brand}
+                              competitors={selected.input.competitors}
+                            />
+                          ) : (
+                            <p className="text-sm text-muted">No answer.</p>
+                          )}
+                          <CompetitorTallies
+                            result={r}
+                            competitors={selected.input.competitors}
+                          />
+                        </CardBody>
+                      </Card>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         </section>
       ) : (

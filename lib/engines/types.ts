@@ -18,6 +18,17 @@ export type MentionAnalysis = {
 export type EngineResult = {
   engine: EngineName;
   status: "running" | "done" | "error";
+  /**
+   * Index into the run's `input.prompts` array. Always present on v2+
+   * results. v1 saved analyses migrate to `promptIndex: 0` for every entry.
+   */
+  promptIndex: number;
+  /**
+   * Denormalized prompt text — the exact string this engine answered.
+   * Lets a result be rendered standalone without joining back to the
+   * Analysis input. v1 saved analyses migrate this from input.prompt.
+   */
+  prompt: string;
   answerText?: string;
   citations?: Citation[];
   mentions?: MentionAnalysis;

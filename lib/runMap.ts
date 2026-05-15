@@ -4,7 +4,7 @@ export type RunState = {
   runId: string;
   status: "pending" | "running" | "done" | "error";
   createdAt: string;
-  input: { brand: string; competitors: string[]; prompt: string };
+  input: { brand: string; competitors: string[]; prompts: string[] };
   engines: EngineName[];
   results: EngineResult[];
 };
@@ -20,9 +20,13 @@ if (!globalThis.__leafletRunMap) {
   globalThis.__leafletRunMap = runMap;
 }
 
+export function totalCalls(state: RunState): number {
+  return state.input.prompts.length * state.engines.length;
+}
+
 export function progress(state: RunState): { done: number; total: number } {
   const done = state.results.filter(
     (r) => r.status === "done" || r.status === "error"
   ).length;
-  return { done, total: state.engines.length };
+  return { done, total: totalCalls(state) };
 }

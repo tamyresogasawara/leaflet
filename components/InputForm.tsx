@@ -12,7 +12,11 @@ import type { EngineName } from "@/lib/engines/types";
 
 const COMPETITOR_PLACEHOLDERS = ["HubSpot", "Pipedrive", "Salesforce"];
 
-const PROMPT_PLACEHOLDER = "What are the best CRMs for early-stage startups?";
+const PROMPT_PLACEHOLDERS = [
+  "What are the best CRMs for early-stage startups?",
+  "Which CRM has the most generous free tier?",
+  "Compare HubSpot and Pipedrive for a 10-person sales team.",
+];
 
 export function InputForm() {
   const hydrated = useHasHydrated();
@@ -26,7 +30,7 @@ export function InputForm() {
     const initial = defaults.competitors ?? [];
     return initial.length > 0 ? initial : [""];
   });
-  const [prompt, setPrompt] = useState<string>("");
+  const [prompts, setPrompts] = useState<string[]>([""]);
   const [openaiOn, setOpenaiOn] = useState(true);
   const [anthropicOn, setAnthropicOn] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -56,8 +60,9 @@ export function InputForm() {
       setError("Brand is required.");
       return;
     }
-    if (!prompt.trim()) {
-      setError("Prompt is required.");
+    const cleanedPrompts = prompts.map((s) => s.trim()).filter(Boolean);
+    if (cleanedPrompts.length === 0) {
+      setError("At least one prompt is required.");
       return;
     }
     const cleanedCompetitors = competitors
@@ -72,7 +77,7 @@ export function InputForm() {
         body: JSON.stringify({
           brand: brand.trim(),
           competitors: cleanedCompetitors,
-          prompt: prompt.trim(),
+          prompts: cleanedPrompts,
           engines,
           keys: {
             openai: keys.openai?.value,
@@ -151,18 +156,48 @@ export function InputForm() {
         )}
       </fieldset>
 
-      <Field
-        label="Prompt to test"
-        htmlFor="prompt"
-        hint={`${prompt.length}/4000`}
-      >
-        <Textarea
-          id="prompt"
-          placeholder={PROMPT_PLACEHOLDER}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value.slice(0, 4000))}
-        />
-      </Field>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-ink">
+          Prompts to test{" "}
+          <span className="text-xs font-normal text-subtle">
+            ({prompts.length}/10)
+          </span>
+        </legend>
+        <p className="text-xs text-subtle">
+          Each prompt runs against every selected engine. More prompts = more
+          coverage, more cost.
+        </p>
+        <div className="space-y-2">
+          {prompts.map((value, idx) => (
+            <PromptRow
+              key={idx}
+              value={value}
+              index={idx}
+              onChange={(next) =>
+                setPrompts((prev) =>
+                  prev.map((v, i) => (i === idx ? next : v))
+                )
+              }
+              onRemove={() =>
+                setPrompts((prev) => prev.filter((_, i) => i !== idx))
+              }
+            />
+          ))}
+        </div>
+        {prompts.length >= 10 ? (
+          <p className="text-xs text-subtle">Max 10 prompts.</p>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setPrompts((prev) => [...prev, ""])}
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            Add another prompt
+          </Button>
+        )}
+      </fieldset>
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium text-ink">Engines</legend>
@@ -206,6 +241,48 @@ export function InputForm() {
         </p>
       </div>
     </form>
+  );
+}
+
+function PromptRow({
+  value,
+  index,
+  onChange,
+  onRemove,
+}: {
+  value: string;
+  index: number;
+  onChange: (next: string) => void;
+  onRemove: () => void;
+}) {
+  const id = `prompt-${index}`;
+  const placeholder =
+    PROMPT_PLACEHOLDERS[index % PROMPT_PLACEHOLDERS.length] ??
+    "Type a prompt to test…";
+  return (
+    <div className="flex items-start gap-2">
+      <div className="flex-1">
+        <Textarea
+          id={id}
+          aria-label={`Prompt ${index + 1}`}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value.slice(0, 4000))}
+        />
+        <p className="mt-1 text-right text-xs text-subtle">
+          {value.length}/4000
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove prompt ${index + 1}`}
+        title="Remove prompt"
+        className="mt-1 flex h-10 w-10 items-center justify-center rounded text-subtle hover:bg-surface hover:text-ink"
+      >
+        <X className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
   );
 }
 

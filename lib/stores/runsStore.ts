@@ -6,7 +6,7 @@ import type { EngineResult } from "@/lib/engines/types";
 export type Analysis = {
   id: string;
   createdAt: string;
-  input: { brand: string; competitors: string[]; prompt: string };
+  input: { brand: string; competitors: string[]; prompts: string[] };
   results: EngineResult[];
 };
 
@@ -20,6 +20,46 @@ type Actions = {
 };
 
 const HARD_CAP = 20;
+
+// v1 → v2 schema migration. v1 saved analyses had a single `prompt: string`;
+// v2 supports `prompts: string[]` and denormalizes the prompt text onto
+// each result. Migration: wrap the existing prompt into a single-element
+// array and stamp every existing result with `promptIndex: 0` plus the
+// same prompt string so the result is renderable standalone.
+type AnalysisV1 = {
+  id: string;
+  createdAt: string;
+  input: { brand: string; competitors: string[]; prompt: string };
+  results: Array<Omit<EngineResult, "promptIndex" | "prompt">>;
+};
+
+type StateV1 = { analyses: Record<string, AnalysisV1> };
+type PersistedState = State | StateV1;
+
+/**
+ * Exported for unit testing. Pure function: takes a v1 persisted state,
+ * returns the v2 equivalent. No side effects.
+ */
+export function migrateV1ToV2(state: StateV1): State {
+  const out: Record<string, Analysis> = {};
+  for (const [id, a] of Object.entries(state.analyses ?? {})) {
+    out[id] = {
+      id: a.id,
+      createdAt: a.createdAt,
+      input: {
+        brand: a.input.brand,
+        competitors: a.input.competitors,
+        prompts: [a.input.prompt],
+      },
+      results: a.results.map((r) => ({
+        ...r,
+        promptIndex: 0,
+        prompt: a.input.prompt,
+      })),
+    };
+  }
+  return { analyses: out };
+}
 
 export const useRunsStore = create<State & Actions>()(
   persist(
@@ -44,7 +84,15 @@ export const useRunsStore = create<State & Actions>()(
     }),
     {
       name: "leaflet.runs",
-      version: 1,
+      version: 2,
+      migrate: (persistedState, version) => {
+        if (version < 2) {
+          return {
+            ...migrateV1ToV2(persistedState as StateV1),
+          } as PersistedState;
+        }
+        return persistedState as PersistedState;
+      },
     }
   )
 );

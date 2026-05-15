@@ -14,7 +14,13 @@ type RunStatus = {
   status: "pending" | "running" | "done" | "error";
   progress: { done: number; total: number };
   results: EngineResult[];
-  input?: { brand: string; competitors: string[]; prompt: string };
+  input?: { brand: string; competitors: string[]; prompts: string[] };
+};
+
+type CachedInput = {
+  brand: string;
+  competitors: string[];
+  prompts: string[];
 };
 
 const ENGINE_LABELS: Record<string, string> = {
@@ -26,11 +32,7 @@ export function RunView({ runId }: { runId: string }) {
   const [state, setState] = useState<RunStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const inputCache = useRef<{
-    brand: string;
-    competitors: string[];
-    prompt: string;
-  } | null>(null);
+  const inputCache = useRef<CachedInput | null>(null);
   const saveAnalysis = useRunsStore((s) => s.saveAnalysis);
   const analyses = useRunsStore((s) => s.analyses);
 
@@ -189,19 +191,67 @@ export function RunView({ runId }: { runId: string }) {
           results={state.results}
           brand={inputCache.current?.brand ?? ""}
           competitors={inputCache.current?.competitors ?? []}
+          prompts={inputCache.current?.prompts ?? []}
         />
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {state.results.map((r) => (
-          <EngineCard
-            key={r.engine}
-            result={r}
-            brand={inputCache.current?.brand ?? ""}
-            competitors={inputCache.current?.competitors ?? []}
-          />
-        ))}
-      </div>
+      <PromptSections
+        prompts={inputCache.current?.prompts ?? []}
+        results={state.results}
+        brand={inputCache.current?.brand ?? ""}
+        competitors={inputCache.current?.competitors ?? []}
+      />
+    </div>
+  );
+}
+
+function PromptSections({
+  prompts,
+  results,
+  brand,
+  competitors,
+}: {
+  prompts: string[];
+  results: EngineResult[];
+  brand: string;
+  competitors: string[];
+}) {
+  if (prompts.length === 0) {
+    // No input cached yet (loading). Render nothing — the parent renders
+    // a "Loading…" or in-flight progress line.
+    return null;
+  }
+  return (
+    <div className="space-y-8">
+      {prompts.map((promptText, idx) => {
+        const promptResults = results.filter((r) => r.promptIndex === idx);
+        return (
+          <section
+            key={idx}
+            aria-label={`Prompt ${idx + 1}`}
+            className="space-y-3"
+          >
+            <header className="flex items-baseline gap-2">
+              <span className="text-xs uppercase tracking-wide text-subtle">
+                Prompt {idx + 1} of {prompts.length}
+              </span>
+            </header>
+            <p className="rounded-card border border-border bg-surface p-3 font-mono text-sm leading-6 text-ink">
+              {promptText}
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              {promptResults.map((r) => (
+                <EngineCard
+                  key={`${r.engine}-${r.promptIndex}`}
+                  result={r}
+                  brand={brand}
+                  competitors={competitors}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -210,12 +260,15 @@ function SummaryStrip({
   results,
   brand,
   competitors,
+  prompts,
 }: {
   results: EngineResult[];
   brand: string;
   competitors: string[];
+  prompts: string[];
 }) {
   const done = results.filter((r) => r.status === "done");
+  const totalAnswers = done.length;
   const mentioned = done.filter((r) => r.mentions?.brand.mentioned).length;
   const totalCitations = done.reduce(
     (acc, r) => acc + (r.citations?.length ?? 0),
@@ -223,12 +276,13 @@ function SummaryStrip({
   );
   const totalTracked = competitors.length;
   const showCompetitorTile = totalTracked > 0;
-  // Count of competitors with ≥1 hit across any engine.
+  // Competitors with ≥1 hit anywhere in this analysis.
   const competitorsMentioned = showCompetitorTile
     ? competitors.filter((name) =>
         done.some((r) => (r.mentions?.competitors?.[name]?.count ?? 0) > 0)
       ).length
     : 0;
+  const multiPrompt = prompts.length > 1;
   const gridCols = showCompetitorTile
     ? "md:grid-cols-2 lg:grid-cols-4"
     : "md:grid-cols-3";
@@ -236,19 +290,35 @@ function SummaryStrip({
     <div className={`grid gap-3 ${gridCols}`}>
       <Tile
         label="Mention rate"
-        value={`${mentioned} of ${done.length} engines`}
-        help={`How many engines mentioned ${brand || "your brand"} at least once.`}
+        value={
+          multiPrompt
+            ? `${mentioned} of ${totalAnswers} answers`
+            : `${mentioned} of ${totalAnswers} engines`
+        }
+        help={
+          multiPrompt
+            ? `How many of the engine answers across all prompts mentioned ${brand || "your brand"} at least once.`
+            : `How many engines mentioned ${brand || "your brand"} at least once.`
+        }
       />
       <Tile
-        label="First position"
-        value={firstPositionSummary(done, brand)}
-        help="Where your brand first appears in each answer."
+        label={multiPrompt ? "Prompts run" : "First position"}
+        value={
+          multiPrompt
+            ? `${prompts.length}`
+            : firstPositionSummary(done, brand)
+        }
+        help={
+          multiPrompt
+            ? "Total prompts tested in this analysis."
+            : "Where your brand first appears in each answer."
+        }
       />
       {showCompetitorTile ? (
         <Tile
           label="Competitors mentioned"
-          value={`${competitorsMentioned} of ${totalTracked} across engines`}
-          help="How many of your tracked competitors appeared in at least one engine's answer."
+          value={`${competitorsMentioned} of ${totalTracked} across answers`}
+          help="How many of your tracked competitors appeared in at least one answer."
         />
       ) : null}
       <Tile
