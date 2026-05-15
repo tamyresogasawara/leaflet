@@ -39,6 +39,93 @@ export function InputForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Prompt suggestions: optional URL → server scrapes → LLM returns 10
+  // candidate prompts the user can click to add as rows.
+  const [suggestUrl, setSuggestUrl] = useState<string>("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestSource, setSuggestSource] = useState<
+    "openai" | "anthropic" | "fixture" | null
+  >(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const promptsAtCap = prompts.length >= 10;
+  const canSuggest = Boolean(
+    suggestUrl.trim() && brand.trim() && !suggesting
+  );
+
+  async function handleSuggest() {
+    setSuggestError(null);
+    if (!suggestUrl.trim() || !brand.trim()) {
+      setSuggestError("Enter a brand name and a URL first.");
+      return;
+    }
+    setSuggesting(true);
+    try {
+      const res = await fetch("/api/suggest-prompts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url: suggestUrl.trim(),
+          brand: brand.trim(),
+          keys: {
+            openai: keys.openai?.value,
+            anthropic: keys.anthropic?.value,
+          },
+        }),
+      });
+      const data = (await res.json()) as {
+        suggestions?: string[];
+        source?: "openai" | "anthropic" | "fixture";
+        error?: string;
+        code?: "auth" | "network" | "parse" | "unknown";
+      };
+      if (!res.ok) {
+        setSuggestError(describeSuggestError(data.code));
+        setSuggestions([]);
+        setSuggestSource(null);
+        return;
+      }
+      setSuggestions(data.suggestions ?? []);
+      setSuggestSource(data.source ?? null);
+    } catch {
+      setSuggestError(describeSuggestError("network"));
+      setSuggestions([]);
+      setSuggestSource(null);
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  function handleAddSuggestion(s: string) {
+    const trimmed = s.trim();
+    if (!trimmed) return;
+    setPrompts((prev) => {
+      if (prev.some((p) => p.trim() === trimmed)) return prev;
+      if (prev.length >= 10) return prev;
+      const emptyIdx = prev.findIndex((p) => !p.trim());
+      if (emptyIdx >= 0) {
+        return prev.map((p, i) => (i === emptyIdx ? trimmed : p));
+      }
+      return [...prev, trimmed];
+    });
+  }
+
+  function describeSuggestError(
+    code: "auth" | "network" | "parse" | "unknown" | undefined
+  ): string {
+    switch (code) {
+      case "auth":
+        return "Add an OpenAI or Anthropic key in Settings to generate suggestions.";
+      case "network":
+        return "Couldn't reach that page. Check the URL and try again.";
+      case "parse":
+        return "We couldn't read the page's metadata.";
+      default:
+        return "Couldn't generate suggestions. Try again or use a different URL.";
+    }
+  }
+
   // Fixture mode treats every engine as runnable. Once live mode lands the
   // checks below gate on the corresponding key being present.
   const hasOpenai = hydrated ? Boolean(keys.openai) : false;
@@ -161,6 +248,66 @@ export function InputForm() {
             Add another competitor
           </Button>
         )}
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-ink">
+          Need prompt ideas?{" "}
+          <span className="text-xs font-normal text-subtle">(optional)</span>
+        </legend>
+        <p className="text-xs text-subtle">
+          Paste a URL — your homepage, product page, or competitor — and
+          we&apos;ll suggest 10 prompts a buyer might ask.
+        </p>
+        <div className="flex items-start gap-2">
+          <Input
+            id="suggest-url"
+            aria-label="Page URL for prompt suggestions"
+            placeholder="https://your-product.com"
+            value={suggestUrl}
+            onChange={(e) => setSuggestUrl(e.target.value)}
+            autoComplete="off"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.preventDefault();
+            }}
+            type="url"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
+            onClick={handleSuggest}
+            disabled={suggesting}
+          >
+            {suggesting ? "Thinking…" : "Suggest"}
+          </Button>
+        </div>
+        {suggestError ? (
+          <p className="text-xs text-error" role="alert">
+            {suggestError}
+          </p>
+        ) : null}
+        {suggestions.length > 0 ? (
+          <div className="space-y-2 rounded-card border border-border bg-surface p-3">
+            <p className="text-xs text-muted">
+              Click any suggestion to add it to your prompt list.
+            </p>
+            <ul className="flex flex-wrap gap-2">
+              {suggestions.map((s, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => handleAddSuggestion(s)}
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-3 py-1 text-xs text-ink hover:border-[var(--color-primary)] hover:bg-white"
+                  >
+                    <Plus className="h-3 w-3" aria-hidden />
+                    <span className="max-w-[28ch] truncate">{s}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </fieldset>
 
       <fieldset className="space-y-2">
