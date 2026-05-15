@@ -13,7 +13,7 @@ import {
 } from "@react-pdf/renderer";
 import { format } from "date-fns";
 import { brand } from "@/brand.config";
-import { findMentionSpans } from "@/lib/detect";
+import { computeCompetitorTotals, findMentionSpans } from "@/lib/detect";
 import { t } from "@/lib/strings";
 import type { Analysis } from "@/lib/stores/runsStore";
 
@@ -127,9 +127,15 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
-  metricsRow: { flexDirection: "row", gap: 12, marginBottom: 24 },
+  metricsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 24,
+  },
   tile: {
-    flex: 1,
+    // ~48% so 2 tiles fit per row with the 12pt gap; flexWraps to 2 rows.
+    width: "48%",
     borderWidth: 1,
     borderColor: COLORS.border,
     borderStyle: "solid",
@@ -175,6 +181,35 @@ const styles = StyleSheet.create({
   brandHighlight: { color: brand.accentHex, fontWeight: 700 },
   competitorHighlight: { color: "#B45309", fontWeight: 700 },
   errorText: { color: COLORS.error, fontSize: 10 },
+  competitorBlock: {
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    borderTopStyle: "solid",
+  },
+  competitorTitle: {
+    fontSize: 7,
+    textTransform: "uppercase",
+    color: COLORS.subtle,
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  competitorRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    fontSize: 9,
+  },
+  competitorTallyHit: {
+    color: "#B45309",
+    fontWeight: 700,
+    fontSize: 9,
+  },
+  competitorTallyMiss: {
+    color: COLORS.subtle,
+    fontSize: 9,
+  },
   citationsTitle: {
     fontSize: 9,
     fontWeight: 700,
@@ -237,6 +272,13 @@ export function ReportDocument({ analysis }: { analysis: Analysis }) {
     (acc, r) => acc + (r.citations?.length ?? 0),
     0
   );
+  const competitorTotals = computeCompetitorTotals(done);
+  const competitorTileValue =
+    competitorTotals.totalMentions === 0
+      ? "0"
+      : competitorTotals.leader
+        ? `${competitorTotals.totalMentions} (top: ${competitorTotals.leader.name} · ${competitorTotals.leader.count})`
+        : String(competitorTotals.totalMentions);
   const createdAt = format(new Date(analysis.createdAt), "PPpp");
   const promptForCover = truncate(analysis.input.prompt, 200);
 
@@ -284,6 +326,13 @@ export function ReportDocument({ analysis }: { analysis: Analysis }) {
             </Text>
           </View>
           <View style={styles.tile}>
+            <Text style={styles.tileLabel}>Competitor mentions</Text>
+            <Text style={styles.tileValue}>{competitorTileValue}</Text>
+            <Text style={styles.tileHelp}>
+              Total mentions across competitors and which one leads.
+            </Text>
+          </View>
+          <View style={styles.tile}>
             <Text style={styles.tileLabel}>Citations found</Text>
             <Text style={styles.tileValue}>{totalCitations}</Text>
             <Text style={styles.tileHelp}>
@@ -323,6 +372,10 @@ export function ReportDocument({ analysis }: { analysis: Analysis }) {
                 ) : (
                   <Text style={{ color: COLORS.subtle }}>No answer.</Text>
                 )}
+                <CompetitorTalliesPdf
+                  result={r}
+                  competitors={analysis.input.competitors}
+                />
                 {r.citations && r.citations.length > 0 ? (
                   <>
                     <Text style={styles.citationsTitle}>
@@ -344,6 +397,41 @@ export function ReportDocument({ analysis }: { analysis: Analysis }) {
         <Footer />
       </Page>
     </Document>
+  );
+}
+
+type EngineResultLike = Analysis["results"][number];
+
+function CompetitorTalliesPdf({
+  result,
+  competitors,
+}: {
+  result: EngineResultLike;
+  competitors: string[];
+}) {
+  if (competitors.length === 0) return null;
+  const hits = result.mentions?.competitors ?? {};
+  return (
+    <View style={styles.competitorBlock}>
+      <Text style={styles.competitorTitle}>Competitor mentions</Text>
+      <View style={styles.competitorRow}>
+        {competitors.map((name) => {
+          const count = hits[name]?.count ?? 0;
+          return (
+            <Text
+              key={name}
+              style={
+                count > 0
+                  ? styles.competitorTallyHit
+                  : styles.competitorTallyMiss
+              }
+            >
+              {name} · {count}
+            </Text>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 

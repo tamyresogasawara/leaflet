@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { detectMentions } from "./detect";
+import { computeCompetitorTotals, detectMentions } from "./detect";
+import type { EngineResult } from "@/lib/engines/types";
 
 describe("detectMentions", () => {
   it("finds a simple brand mention", () => {
@@ -38,5 +39,66 @@ describe("detectMentions", () => {
     const r = detectMentions("Some text.", "", []);
     expect(r.brand.mentioned).toBe(false);
     expect(r.brand.firstIndex).toBe(null);
+  });
+});
+
+function mkResult(
+  engine: "openai" | "anthropic",
+  competitors: Record<string, number>
+): EngineResult {
+  return {
+    engine,
+    status: "done",
+    mentions: {
+      brand: { mentioned: false, count: 0, firstIndex: null },
+      competitors: Object.fromEntries(
+        Object.entries(competitors).map(([name, count]) => [
+          name,
+          { mentioned: count > 0, count, firstIndex: count > 0 ? 0 : null },
+        ])
+      ),
+    },
+  };
+}
+
+describe("computeCompetitorTotals", () => {
+  it("sums per-engine counts across all done results", () => {
+    const r = computeCompetitorTotals([
+      mkResult("openai", { HubSpot: 2, Pipedrive: 1 }),
+      mkResult("anthropic", { HubSpot: 1, Pipedrive: 0, Salesforce: 3 }),
+    ]);
+    expect(r.totalMentions).toBe(7);
+    expect(r.perCompetitor).toEqual([
+      // Tie at 3: alphabetical tiebreaker → HubSpot before Salesforce.
+      { name: "HubSpot", count: 3 },
+      { name: "Salesforce", count: 3 },
+      { name: "Pipedrive", count: 1 },
+    ]);
+    expect(r.leader?.name).toBe("HubSpot");
+    expect(r.leader?.count).toBe(3);
+  });
+
+  it("returns null leader when no competitor is mentioned", () => {
+    const r = computeCompetitorTotals([
+      mkResult("openai", { HubSpot: 0, Pipedrive: 0 }),
+    ]);
+    expect(r.totalMentions).toBe(0);
+    expect(r.leader).toBe(null);
+  });
+
+  it("handles empty input", () => {
+    const r = computeCompetitorTotals([]);
+    expect(r.totalMentions).toBe(0);
+    expect(r.perCompetitor).toEqual([]);
+    expect(r.leader).toBe(null);
+  });
+
+  it("skips results without mentions", () => {
+    const without: EngineResult = { engine: "openai", status: "done" };
+    const r = computeCompetitorTotals([
+      without,
+      mkResult("anthropic", { HubSpot: 2 }),
+    ]);
+    expect(r.totalMentions).toBe(2);
   });
 });

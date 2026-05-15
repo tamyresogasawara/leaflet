@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { SafeMarkdown } from "@/components/SafeMarkdown";
+import { CompetitorTallies } from "@/components/CompetitorTallies";
+import { computeCompetitorTotals } from "@/lib/detect";
 import { useRunsStore } from "@/lib/stores/runsStore";
 import type { EngineResult } from "@/lib/engines/types";
 
@@ -186,6 +188,7 @@ export function RunView({ runId }: { runId: string }) {
         <SummaryStrip
           results={state.results}
           brand={inputCache.current?.brand ?? ""}
+          competitors={inputCache.current?.competitors ?? []}
         />
       ) : null}
 
@@ -206,9 +209,11 @@ export function RunView({ runId }: { runId: string }) {
 function SummaryStrip({
   results,
   brand,
+  competitors,
 }: {
   results: EngineResult[];
   brand: string;
+  competitors: string[];
 }) {
   const done = results.filter((r) => r.status === "done");
   const mentioned = done.filter((r) => r.mentions?.brand.mentioned).length;
@@ -216,8 +221,19 @@ function SummaryStrip({
     (acc, r) => acc + (r.citations?.length ?? 0),
     0
   );
+  const totalTracked = competitors.length;
+  const showCompetitorTile = totalTracked > 0;
+  // Count of competitors with ≥1 hit across any engine.
+  const competitorsMentioned = showCompetitorTile
+    ? competitors.filter((name) =>
+        done.some((r) => (r.mentions?.competitors?.[name]?.count ?? 0) > 0)
+      ).length
+    : 0;
+  const gridCols = showCompetitorTile
+    ? "md:grid-cols-2 lg:grid-cols-4"
+    : "md:grid-cols-3";
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className={`grid gap-3 ${gridCols}`}>
       <Tile
         label="Mention rate"
         value={`${mentioned} of ${done.length} engines`}
@@ -228,6 +244,13 @@ function SummaryStrip({
         value={firstPositionSummary(done, brand)}
         help="Where your brand first appears in each answer."
       />
+      {showCompetitorTile ? (
+        <Tile
+          label="Competitors mentioned"
+          value={`${competitorsMentioned} of ${totalTracked} across engines`}
+          help="How many of your tracked competitors appeared in at least one engine's answer."
+        />
+      ) : null}
       <Tile
         label="Citations found"
         value={String(totalCitations)}
@@ -236,6 +259,7 @@ function SummaryStrip({
     </div>
   );
 }
+
 
 function firstPositionSummary(results: EngineResult[], brand: string): string {
   if (results.length === 0) return "—";
@@ -308,6 +332,7 @@ function EngineCard({
               brand={brand}
               competitors={competitors}
             />
+            <CompetitorTallies result={result} competitors={competitors} />
             {result.citations && result.citations.length > 0 ? (
               <details className="mt-4 text-sm">
                 <summary className="cursor-pointer font-medium text-ink">

@@ -1,4 +1,4 @@
-import type { MentionAnalysis } from "@/lib/engines/types";
+import type { EngineResult, MentionAnalysis } from "@/lib/engines/types";
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -72,6 +72,37 @@ export function findMentionSpans(
     cursor = s.end;
   }
   return out;
+}
+
+export type CompetitorTotals = {
+  totalMentions: number;
+  perCompetitor: Array<{ name: string; count: number }>;
+  leader: { name: string; count: number } | null;
+};
+
+/**
+ * Aggregate competitor mention counts across a set of done engine results.
+ * Used by the Results summary tile and the PDF report.
+ */
+export function computeCompetitorTotals(
+  doneResults: EngineResult[]
+): CompetitorTotals {
+  const totals = new Map<string, number>();
+  for (const r of doneResults) {
+    const c = r.mentions?.competitors;
+    if (!c) continue;
+    for (const [name, hit] of Object.entries(c)) {
+      totals.set(name, (totals.get(name) ?? 0) + hit.count);
+    }
+  }
+  const perCompetitor = Array.from(totals, ([name, count]) => ({
+    name,
+    count,
+  })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const totalMentions = perCompetitor.reduce((a, b) => a + b.count, 0);
+  const leader =
+    perCompetitor[0] && perCompetitor[0].count > 0 ? perCompetitor[0] : null;
+  return { totalMentions, perCompetitor, leader };
 }
 
 export function detectMentions(

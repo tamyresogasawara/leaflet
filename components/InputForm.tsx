@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
@@ -8,6 +9,8 @@ import { useConfigStore } from "@/lib/stores/configStore";
 import { useHasHydrated } from "@/lib/stores/useHasHydrated";
 import Link from "next/link";
 import type { EngineName } from "@/lib/engines/types";
+
+const COMPETITOR_PLACEHOLDERS = ["HubSpot", "Pipedrive", "Salesforce"];
 
 const PROMPT_PLACEHOLDER = "What are the best CRMs for early-stage startups?";
 
@@ -19,9 +22,10 @@ export function InputForm() {
   const router = useRouter();
 
   const [brand, setBrand] = useState<string>(defaults.brand ?? "");
-  const [competitorsRaw, setCompetitorsRaw] = useState<string>(
-    (defaults.competitors ?? []).join(", ")
-  );
+  const [competitors, setCompetitors] = useState<string[]>(() => {
+    const initial = defaults.competitors ?? [];
+    return initial.length > 0 ? initial : [""];
+  });
   const [prompt, setPrompt] = useState<string>("");
   const [openaiOn, setOpenaiOn] = useState(true);
   const [anthropicOn, setAnthropicOn] = useState(true);
@@ -56,11 +60,10 @@ export function InputForm() {
       setError("Prompt is required.");
       return;
     }
-    const competitors = competitorsRaw
-      .split(",")
+    const cleanedCompetitors = competitors
       .map((s) => s.trim())
       .filter(Boolean);
-    setDefaults({ brand: brand.trim(), competitors });
+    setDefaults({ brand: brand.trim(), competitors: cleanedCompetitors });
     setSubmitting(true);
     try {
       const res = await fetch("/api/analyze", {
@@ -68,7 +71,7 @@ export function InputForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           brand: brand.trim(),
-          competitors,
+          competitors: cleanedCompetitors,
           prompt: prompt.trim(),
           engines,
           keys: {
@@ -101,19 +104,52 @@ export function InputForm() {
         />
       </Field>
 
-      <Field
-        label="Competitors (optional)"
-        htmlFor="competitors"
-        hint="Comma-separated. We'll highlight these in the answers too."
-      >
-        <Input
-          id="competitors"
-          placeholder="HubSpot, Pipedrive, Salesforce"
-          value={competitorsRaw}
-          onChange={(e) => setCompetitorsRaw(e.target.value)}
-          autoComplete="off"
-        />
-      </Field>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-ink">
+          Competitors{" "}
+          <span className="text-xs font-normal text-subtle">
+            (optional — up to 10)
+          </span>
+        </legend>
+        <p className="text-xs text-subtle">
+          We&apos;ll highlight these in the answers and tally mentions per
+          engine.
+        </p>
+        <div className="space-y-2">
+          {competitors.map((value, idx) => (
+            <CompetitorRow
+              key={idx}
+              value={value}
+              index={idx}
+              onChange={(next) =>
+                setCompetitors((prev) =>
+                  prev.map((v, i) => (i === idx ? next : v))
+                )
+              }
+              onRemove={() =>
+                // Brief: always allow remove, even on the lone row — the
+                // user can clear back to "no competitors tracked".
+                setCompetitors((prev) => prev.filter((_, i) => i !== idx))
+              }
+            />
+          ))}
+        </div>
+        {competitors.length >= 10 ? (
+          <p className="text-xs text-subtle">Max 10 competitors.</p>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              setCompetitors((prev) => [...prev, ""])
+            }
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            Add another competitor
+          </Button>
+        )}
+      </fieldset>
 
       <Field
         label="Prompt to test"
@@ -170,6 +206,49 @@ export function InputForm() {
         </p>
       </div>
     </form>
+  );
+}
+
+function CompetitorRow({
+  value,
+  index,
+  onChange,
+  onRemove,
+}: {
+  value: string;
+  index: number;
+  onChange: (next: string) => void;
+  onRemove: () => void;
+}) {
+  const id = `competitor-${index}`;
+  const placeholder =
+    COMPETITOR_PLACEHOLDERS[index % COMPETITOR_PLACEHOLDERS.length] ??
+    "Competitor";
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        id={id}
+        aria-label={`Competitor ${index + 1}`}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        // Don't submit the form when the user presses Enter inside a
+        // competitor row — they're still mid-list, let them keep typing.
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.preventDefault();
+        }}
+        autoComplete="off"
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove competitor ${index + 1}`}
+        title="Remove competitor"
+        className="flex h-10 w-10 items-center justify-center rounded text-subtle hover:bg-surface hover:text-ink"
+      >
+        <X className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
   );
 }
 

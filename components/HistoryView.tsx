@@ -5,6 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { SafeMarkdown } from "@/components/SafeMarkdown";
+import { CompetitorTallies } from "@/components/CompetitorTallies";
 import { useHasHydrated } from "@/lib/stores/useHasHydrated";
 import {
   sortedAnalyses,
@@ -136,6 +137,10 @@ export function HistoryView() {
                   ) : (
                     <p className="text-sm text-muted">No answer.</p>
                   )}
+                  <CompetitorTallies
+                    result={r}
+                    competitors={selected.input.competitors}
+                  />
                 </CardBody>
               </Card>
             ))}
